@@ -4,13 +4,14 @@
   "description": "Beauty SaaS — Online booking platform",
   "main": "server/index.js",
   "type": "commonjs",
-  "scripts": {
-    "start": "node server/index.js",
-    "server": "node server/index.js",
-    "dev:client": "vite",
-    "build": "npx vite build",
-    "dev": "node server/index.js"
-  },
+ "scripts": {
+  "start": "node server/index.js",
+  "server": "node server/index.js",
+  "dev:client": "vite",
+  "build": "npm exec -- vite build",
+  "dev": "node server/index.js",
+  "preview": "vite preview"
+},
   "dependencies": {
     "clsx": "2.1.1",
     "connect-pg-simple": "^9.0.1",
