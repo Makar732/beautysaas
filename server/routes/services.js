@@ -1,0 +1,10 @@
+const express = require('express');
+const ctrl = require('../controllers/serviceController');
+const { requireAuth } = require('../middleware/requireAuth');
+const r = express.Router();
+r.use(requireAuth);
+r.get('/', ctrl.getServices);
+r.post('/', ctrl.createService);
+r.put('/:id', ctrl.updateService);
+r.delete('/:id', ctrl.deleteService);
+module.exports = r;
