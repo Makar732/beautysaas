@@ -8,9 +8,9 @@
   "start": "node server/index.js",
   "server": "node server/index.js",
   "dev:client": "vite",
-  "build": "npm exec -- vite build",
-  "dev": "node server/index.js",
+  "dev": "concurrently \"npm run server\" \"npm run dev:client\"",
   "preview": "vite preview"
+},
 },
   "dependencies": {
     "clsx": "2.1.1",
