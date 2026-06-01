@@ -1,5 +1,19 @@
-// Загружаем переменные из .env ПЕРВЫМ ДЕЛОМ
-require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+require('dotenv').config({ 
+  path: require('path').join(__dirname, '..', '.env') 
+});
+
+// ОТЛАДКА — видим какие переменные загрузились
+console.log('=== ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ ===');
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? '✅ Найдена' : '❌ НЕ НАЙДЕНА');
+console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? '✅ Найден' : '❌ НЕ НАЙДЕН');
+console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? '✅ Найден' : '❌ НЕ НАЙДЕН');
+console.log('TELEGRAM_BOT_TOKEN:', process.env.TELEGRAM_BOT_TOKEN ? '✅ Найден' : '❌ НЕ НАЙДЕН');
+console.log('SESSION_SECRET:', process.env.SESSION_SECRET ? '✅ Найден' : '❌ НЕ НАЙДЕН');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('CLIENT_URL:', process.env.CLIENT_URL);
+console.log('SERVER_URL:', process.env.SERVER_URL);
+console.log('============================\n');
 
 const express = require('express');
 const session = require('express-session');
@@ -8,7 +22,16 @@ const passport = require('passport');
 const { Strategy: GoogleStrategy } = require('passport-google-oauth20');
 const cors = require('cors');
 const path = require('path');
-const pool = require('./config/db');
+const fs = require('fs');
+
+let pool;
+try {
+  pool = require('./config/db');
+  console.log('✅ Пул БД инициализирован');
+} catch (error) {
+  console.error('❌ ОШИБКА инициализации пула БД:', error.message);
+  process.exit(1);
+}
 
 // ============================================================
 // НАСТРОЙКА GOOGLE OAUTH
@@ -44,12 +67,14 @@ passport.use(
              RETURNING *`,
             [googleId, name, email]
           );
-          console.log('Новый мастер зарегистрирован:', email);
+          console.log('✅ Новый мастер зарегистрирован:', email);
+        } else {
+          console.log('✅ Мастер найден:', email);
         }
 
         return done(null, result.rows[0]);
       } catch (error) {
-        console.error('Ошибка OAuth:', error.message);
+        console.error('❌ Ошибка OAuth:', error.message);
         return done(error, null);
       }
     }
@@ -71,6 +96,7 @@ passport.deserializeUser(async (id, done) => {
     if (result.rows.length === 0) return done(null, false);
     done(null, result.rows[0]);
   } catch (error) {
+    console.error('❌ Ошибка deserializeUser:', error.message);
     done(error, null);
   }
 });
@@ -80,6 +106,9 @@ passport.deserializeUser(async (id, done) => {
 // ============================================================
 const app = express();
 
+// ВАЖНО для Railway: без этого сессии не будут работать!
+app.set('trust proxy', 1);
+
 // ============================================================
 // MIDDLEWARE
 // ============================================================
@@ -87,7 +116,7 @@ const app = express();
 // Разрешаем запросы с фронтенда
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true, // важно для передачи cookies!
+  credentials: true,
 }));
 
 // Читаем JSON из тела запросов
@@ -105,7 +134,7 @@ app.use(session({
     tableName: 'session',
     createTableIfMissing: false,
   }),
-  secret: process.env.SESSION_SECRET || 'dev-secret',
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-this',
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -120,6 +149,8 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+console.log('✅ Сессии и Passport инициализированы\n');
+
 // ============================================================
 // API МАРШРУТЫ
 // ============================================================
@@ -130,12 +161,6 @@ const authRouter = require('./routes/auth');
 const mastersRouter = require('./routes/masters');
 const servicesRouter = require('./routes/services');
 const appointmentsRouter = require('./routes/appointments');
-
-// Проверяем что каждый роутер это функция
-console.log('auth тип:', typeof authRouter);
-console.log('masters тип:', typeof mastersRouter);
-console.log('services тип:', typeof servicesRouter);
-console.log('appointments тип:', typeof appointmentsRouter);
 
 app.use('/auth', authRouter);
 app.use('/api/masters', mastersRouter);
@@ -148,7 +173,12 @@ app.get('/api/public/master/:slug', masterController.getMasterBySlug);
 
 // Проверка что сервер работает
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({ 
+    status: 'ok', 
+    time: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    port: process.env.PORT
+  });
 });
 
 // ============================================================
@@ -156,23 +186,51 @@ app.get('/api/health', (req, res) => {
 // ============================================================
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '..', 'dist');
-  app.use(express.static(distPath));
+  const indexPath = path.join(distPath, 'index.html');
+  
+  console.log('📦 Production режим');
+  console.log('Раздаём статику из:', distPath, '\n');
+  
+  app.use(express.static(distPath, {
+    maxAge: '1d',
+    etag: false
+  }));
 
   // Все остальные URL отдаём React (он сам разберётся с роутингом)
   app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      console.error('❌ ОШИБКА: Файл index.html не найден!');
+      res.status(500).send('Идёт сборка сайта... Пожалуйста, обновите страницу через минуту.');
+    }
   });
 }
 
 // ============================================================
+// ERROR HANDLER
+// ============================================================
+app.use((err, req, res, next) => {
+  console.error('❌ Необработанная ошибка:', err);
+  res.status(500).json({ 
+    error: 'Internal Server Error',
+    message: err.message 
+  });
+});
+
+// ============================================================
 // ЗАПУСК
 // ============================================================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
-  console.log(`\n Сервер запущен на порту ${PORT}`);
-  console.log(` Режим: ${process.env.NODE_ENV || 'development'}`);
-  console.log(` Открыть: http://localhost:${PORT}\n`);
+  console.log('\n╔════════════════════════════════════════╗');
+  console.log('║   🚀 BEAUTY SAAS СЕРВЕР ЗАПУЩЕН 🚀    ║');
+  console.log('╠════════════════════════════════════════╣');
+  console.log(`║  🔗 Порт: ${PORT.toString().padEnd(31)}║`);
+  console.log(`║  🌍 Режим: ${(process.env.NODE_ENV || 'development').padEnd(28)}║`);
+  console.log(`║  📍 URL: http://localhost:${PORT}${' '.repeat(18 - PORT.toString().length)}║`);
+  console.log('╚════════════════════════════════════════╝\n');
 });
 
 module.exports = app;
