@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* Custom animations */
 @keyframes fadeInScale {
@@ -85,3 +88,4 @@ html {
   transform: translateY(0);
   transition: all 0.3s ease-out;
 }
+'@ | Out-File -FilePath src/index.css -Encoding UTF8 -NoNewline
